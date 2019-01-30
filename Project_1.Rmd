@@ -1,0 +1,80 @@
+---
+title: "Practical Machine Learning Course Project Part 1: Human Activity Recognition"
+author: Yu Mo
+output: html_document
+---
+
+# Summary
+This study is conducted to predict the quality of excersice from movements. It is found that the SVM method is the best, with overall acuracy of 0.91.   
+
+# 1 Pre-processing
+####Data Source 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. Read more: http://groupware.les.inf.puc-rio.br/har#ixzz5dqwupRwF
+
+####Load data
+```{r echo=TRUE, cache=TRUE}
+training.data <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA","#DIV/0!",""))
+testing.data <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA","#DIV/0!",""))
+dim(training.data);dim(testing.data)
+```
+* There are 19622 observations in the traing dataset, and 20 observations in the testing dateset. 
+
+####Create the training and test dataset (25% for testing)
+```{r echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+library(caret)
+set.seed(100)
+inTrain = createDataPartition(training.data$classe, p = 0.6)[[1]]
+training = training.data[ inTrain,-1]  #also get rid of column, user ID
+testing = training.data[-inTrain,-1]
+```
+####Get rid of columns with NA values 
+```{r echo=TRUE, cache=TRUE}
+training<-training[ , colSums(is.na(training)) == 0]
+```
+
+#2 Model Building 
+####Build model using the Support Vector Machine (SVM), the Ramdon Forest (RF), gradient boosting machine (GBM), and the Linear Discriminant Analysis (LDA). This step required packages caret, randomForest, gbm. 
+```{r echo=TRUE, results='hide', message=FALSE, warning=FALSE, error=FALSE,tidy=TRUE, cache=TRUE}
+library(randomForest)
+library(gbm)
+model.svm<- train(classe ~ ., data = training, method = "svmLinear")
+model.rf<-randomForest(classe ~ ., data = training, ntrees=500)
+model.gbm<-gbm(classe ~ ., data = training,n.trees=500)
+model.lda<- train(classe ~ ., data = training, method = "lda")
+
+pred.svm<- as.character(predict(model.svm, testing))
+pred.rf<- as.character(predict(model.rf, testing))
+pred.gbm<- predict(model.gbm, testing,n.trees=500)
+pred.gbm2<-attributes(pred.gbm)$dimnames[[2]][apply(pred.gbm, 1, which.max)]
+pred.lda<- as.character(predict(model.lda, testing))
+```
+####Use ensembling method with RF with the reuslts from the RF, SVM, GBM and LDA models. 
+```{r echo=TRUE, cache=TRUE}
+predDF <- data.frame(pred.svm,pred.gbm,pred.lda,pred.rf, classe =testing$classe)
+model.em<-randomForest(classe ~ ., data =predDF,ntrees=500)
+pred.em<- predict(model.em, predDF)
+```
+
+#3 Compare the results
+####Accuracy of the different models
+```{r echo=TRUE, cache=TRUE}
+accuracy<-data.frame(SVM=confusionMatrix(table(pred.svm, testing$classe))$overall[1],
+RF=confusionMatrix(table(pred.rf, testing$classe))$overall[1] ,  
+GBM=confusionMatrix(table(pred.gbm2, testing$classe))$overall[1] , 
+LDA=confusionMatrix(table(pred.lda, testing$classe))$overall[1] , 
+EM=confusionMatrix(table(pred.em, predDF$classe))$overall[1])
+accuracy
+```
+
+The SVM and LDA methods give very good predictions, and the RF and the EM methods are probably overfitting. SVM is selected as our final model. 
+
+####Performance of the SVM method   
+```{r echo=TRUE, cache=TRUE}
+confusionMatrix(table(pred.svm, testing$classe))
+```
+
+#4 Predict the 20 Cases
+```{r echo=TRUE, cache=TRUE}
+predict(model.svm, newdata=testing.data)
+```
+
